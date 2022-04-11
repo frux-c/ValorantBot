@@ -21,14 +21,6 @@ from ui_endstat_screen import Ui_EndResultWindow
 ##==> ERROR WINDOW
 from ui_error_screen import Ui_ErrorWindow
 
-##==> AUTH WINDOW
-from ui_auth_page import Ui_AuthWindow,loadAuthPage,checkAuthPage
-
-##==> LICENSE WINDOW
-from ui_license_page import Ui_LicenseWindow
-
-##== > DATABASE IMPORT
-from database import DiscordData,LocalData,Database
 
 ## ==> BOT IMPORTS
 import time
@@ -67,12 +59,11 @@ is_first = True
 game_start_time = 0.00
 game_time_stamp = datetime.now()
 
-OAUTH2_REDIRECT = #YOUR GENERATED OAUTH2 REDIRECT 
+oauth2_redirect = 'https://discord.com/api/oauth2/authorize?client_id=836003222958374996&redirect_uri=https%3A%2F%2Fdiscord.com%2Fchannels%2F%40me&response_type=code&scope=identify'
 API_ENDPOINT = 'https://discord.com/api/v8'
-CLIENT_ID = #YOUR CLIENT ID HERE [DISCORD]
-CLIENT_SECRET = #YOUR CLIENT SECERET HERE [DISCORD]
+CLIENT_ID = '836003222958374996'
+CLIENT_SECRET = 'rnE8SjBhyFRft8R4sqyreodr1W2s_bmk'
 REDIRECT_URI = 'https://discord.com/channels/@me'
-
 L_K = str()
 
 hwid = str(popen("wmic csproduct get UUID")).strip().replace(r"\r", "").split(r"\n")[1].strip()
@@ -85,7 +76,6 @@ res.startClick = (938,895)
 res.playAgainRegion = (870, 933, 137, 33)
 res.playAgainClick = (932,948)
 res.inGameRegion = (1663, 952, 60, 20)
-
 def incrementCounter():
     global game_counter
     game_counter += 1
@@ -196,7 +186,6 @@ class EndResultWindow(QMainWindow):
                 self.ui.statTable.setItem(game_row,game_col,cell)
                 game_col += 1
             game_row += 1
-            
 # STATUS SCREEN
 class SessionWindow(QMainWindow):
     def __init__(self):
@@ -356,111 +345,6 @@ class MainWindow(QMainWindow):
 
         self.close()
 
-# DISCORD AUTH
-class AuthWindow(QMainWindow):
-    def __init__(self):
-        QMainWindow.__init__(self)
-        self.ui = Ui_AuthWindow()
-        self.ui.setupUi(self)
-        self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        #AUTHORIZATION
-        self.auth_view = loadAuthPage()
-        self.auth_view.setUrl(QUrl(OAUTH2_REDIRECT))
-        self.ui.horizontalLayout.addWidget(self.auth_view)
-        self.check_auth = checkAuthPage(self.auth_view,self)
-        self.ui.closeButton.clicked.connect(lambda : self.closeAll())
-        self.check_auth.start()
-        self.check_auth.bearer_code.connect(self.set_code)
-
-    def set_code(self,code):
-        self.closeAll()
-        self.code = str(code)
-        self.get_userdata(self.code)
-        return
-
-    def get_userdata(self, code):
-        self._userdata = DiscordData()
-        self._token : Final = self._userdata.exchange_code(code)
-        self._data : Final = self._userdata.exchange_userdata(self._token['access_token'])
-        self.setup_user(self._token, self._data)
-        return
-
-    def setup_user(self, token,data):
-        self.token = token
-        self.data = data
-        self.local_data = LocalData()
-        self.data_base = Database()
-        write_to_userdata = {'_id': self.data['id'],
-                             'username': self.data['username'],
-                             'discriminator': self.data['discriminator'],
-                             'key': L_K,
-                             'HWID': hwid,
-                             'access_token': self.token['access_token'],
-                             'refresh_token': self.token['refresh_token'],
-                             'time_stamp' : str(datetime.now())
-                             }
-        self.local_data.setConfig(write_to_userdata)
-        self.data_base.add_users(self.data,hwid,L_K)
-        self.data_base.pop_key(L_K)
-        self.main_window = MainWindow()
-        self.main_window.show()
-
-    def closeAll(self):
-        print('closing page')
-        self.check_auth._stop()
-        time.sleep(.5)
-        self.close()
-
-    def center(self):
-        qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-
-    def mousePressEvent(self, event):
-        self.oldPos = event.globalPos()
-
-    def mouseMoveEvent(self, event):
-        delta = QPoint (event.globalPos() - self.oldPos)
-        self.move(self.x() + delta.x(), self.y() + delta.y())
-        self.oldPos = event.globalPos()
-
-# LICENSE AUTH
-class LicenseWindow(QMainWindow):
-    def __init__(self):
-        QMainWindow.__init__(self)
-        self.ui = Ui_LicenseWindow()
-        self.ui.setupUi(self)
-        self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        self.ui.closeButton.clicked.connect(lambda : self.close())
-        self.ui.check_button.clicked.connect(lambda : self.validate_key())
-
-
-    def validate_key(self):
-        self.data_base = Database()
-        temp_key = str(self.ui.lineEdit.text())
-        if self.data_base.check_key(temp_key):
-            set_LK(temp_key)
-            self.auth_window = AuthWindow()
-            self.auth_window.show()
-            self.close()
-
-    def center(self):
-        qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-
-    def mousePressEvent(self, event):
-        self.oldPos = event.globalPos()
-
-    def mouseMoveEvent(self, event):
-        delta = QPoint (event.globalPos() - self.oldPos)
-        self.move(self.x() + delta.x(), self.y() + delta.y())
-        self.oldPos = event.globalPos()
-
 # SPLASH SCREEN
 class SplashScreen(QMainWindow):
     def __init__(self):
@@ -519,24 +403,24 @@ class SplashScreen(QMainWindow):
             # STOP TIMER
             
             self.timer.stop()
-            self.local_data = LocalData()
-            self.data_base = Database()
+            #self.local_data = LocalData()
+            #self.data_base = Database()
             self.pass_check = False
             # check if config is valid
-            if self.local_data.check_config():
-                user_data = self.local_data.getConfig()
-                if self.data_base.check_user(user_data,hwid):
-                        self.pass_check = True
+            # if self.local_data.check_config():
+            #     user_data = self.local_data.getConfig()
+            #     if self.data_base.check_user(user_data,hwid):
+            #             self.pass_check = True
 
 
-            if self.pass_check:
-                if file_check():
-                    self.main = MainWindow()
-                    self.main.show()
-            else:
-                self.license = LicenseWindow()
-                self.license.show()
-
+            # if self.pass_check:
+            #     if file_check():
+            #         self.main = MainWindow()
+            #         self.main.show()
+            # else:
+            #     self.license = LicenseWindow()
+            #     self.license.show()
+            MainWindow().show()
             self.close()
 
         # INCREASE COUNTER

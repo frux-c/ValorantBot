@@ -1,0 +1,5 @@
+pyautogui
+win32api
+pytesseract
+pillow
+pyside2
