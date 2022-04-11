@@ -1,5 +1,5 @@
 pyautogui
-win32api
+pywin32
 pytesseract
 pillow
 pyside2

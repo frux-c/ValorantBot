@@ -32,7 +32,6 @@ import random
 import keyboard
 import asyncio
 from PIL import Image
-import requests
 import json
 import subprocess
 from collections import namedtuple
