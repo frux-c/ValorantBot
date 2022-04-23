@@ -1,5 +1,6 @@
 
 import sys, os
+import psutil
 import platform
 from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtCore import (QCoreApplication, QPropertyAnimation, QDate, QDateTime, QMetaObject, QObject, QPoint, QRect, QSize, QTime, QUrl, Qt, QEvent, QThread, Signal)
@@ -36,6 +37,7 @@ import json
 import subprocess
 from collections import namedtuple
 from gameinput import KeyPress
+import threading
 
 #COMPILE FUNCTION
 def popen(cmd):
@@ -58,11 +60,6 @@ is_first = True
 game_start_time = 0.00
 game_time_stamp = datetime.now()
 
-oauth2_redirect = 'https://discord.com/api/oauth2/authorize?client_id=836003222958374996&redirect_uri=https%3A%2F%2Fdiscord.com%2Fchannels%2F%40me&response_type=code&scope=identify'
-API_ENDPOINT = 'https://discord.com/api/v8'
-CLIENT_ID = '836003222958374996'
-CLIENT_SECRET = 'rnE8SjBhyFRft8R4sqyreodr1W2s_bmk'
-REDIRECT_URI = 'https://discord.com/channels/@me'
 L_K = str()
 
 hwid = str(popen("wmic csproduct get UUID")).strip().replace(r"\r", "").split(r"\n")[1].strip()
@@ -402,23 +399,7 @@ class SplashScreen(QMainWindow):
             # STOP TIMER
             
             self.timer.stop()
-            #self.local_data = LocalData()
-            #self.data_base = Database()
             self.pass_check = False
-            # check if config is valid
-            # if self.local_data.check_config():
-            #     user_data = self.local_data.getConfig()
-            #     if self.data_base.check_user(user_data,hwid):
-            #             self.pass_check = True
-
-
-            # if self.pass_check:
-            #     if file_check():
-            #         self.main = MainWindow()
-            #         self.main.show()
-            # else:
-            #     self.license = LicenseWindow()
-            #     self.license.show()
             MainWindow().show()
             self.close()
 
@@ -434,11 +415,22 @@ class ValorantBot(QThread):
         QThread.__init__(self)   
         self.DM_SCREEN = Image.open(r"C:\images\is_dm.png")
         self.NOT_DM_SCREEN = Image.open(r"C:\images\not_dm.png")
+        self.PLAY_MODE_SCREEN = Image.open(r"C:\images\play_button.png")
         self.CONFIDENCE = 0.65
         self.loop_stat = True
         self.DM_IS_SET = False
-       
-    async def _deathmatch(self):
+        self.game_mode = False
+        self.GAME_THRESHOLD = 35
+        self.launch_state = False
+
+    def find_home_play(self):
+        if not self.game_mode:
+            PLAY_MODE = pag.locateCenterOnScreen(self.PLAY_MODE_SCREEN, confidence=.81)
+            self.current_status.emit("setting up...")
+            self.click(PLAY_MODE.x,PLAY_MODE.y)
+            self.game_mode = True
+
+    def find_deathmatch(self):
         IS_NOT_DM_SCREEN = pag.locateCenterOnScreen(self.NOT_DM_SCREEN, confidence=0.81)
         IS_DM_SCREEN = pag.locateCenterOnScreen(self.DM_SCREEN, confidence=0.81)
 
@@ -447,61 +439,101 @@ class ValorantBot(QThread):
             self.click(IS_NOT_DM_SCREEN.x, IS_NOT_DM_SCREEN.y)
             self.DM_IS_SET = True
             win32api.SetCursorPos((res.x // 2, res.y // 2))
+            self.game_mode = True
         elif IS_DM_SCREEN is not None:
             self.DM_IS_SET = True
+            self.game_mode = True
+       
+    def find_start_game(self):
+        while self.loop_stat:
+            if self.launch_state:
+                continue
+            is_start_button = pag.screenshot(r"C:\images\start_button.png", region=res.startRegion)
+            is_start_button = str(pytesseract.image_to_string(is_start_button, config= r'--oem 3 --psm 6'))
+            if 'START' in is_start_button and self.DM_IS_SET:
+                self.current_status.emit("queuing...")
+                self.click(res.startClick[0],res.startClick[1])
+                win32api.SetCursorPos((res.x // 2, res.y // 2))
+            time.sleep(1)
         
-    async def _startgame(self):
-        is_start_button = pag.screenshot(r"C:\images\start_button.png", region=res.startRegion)
-        is_start_button = str(pytesseract.image_to_string(is_start_button, config= r'--oem 3 --psm 6'))
-        if 'START' in is_start_button and self.DM_IS_SET:
-            self.current_status.emit("queuing...")
-            self.click(res.startClick[0],res.startClick[1])
-            win32api.SetCursorPos((res.x // 2, res.y // 2))
-
-    async def _playagain(self):
-        global is_first
-        is_play_again = pag.screenshot(r"C:\images\play_again.png", region=res.playAgainRegion)
-        is_play_again = str(pytesseract.image_to_string(is_play_again, config= r'--oem 3 --psm 6'))
-        if 'PLAY AGAIN' in is_play_again:
-            self.current_status.emit("requeuing...")
-            self.click(res.playAgainClick[0],res.playAgainClick[1])
-            win32api.SetCursorPos((res.x // 2, res.y // 2))
-            appendGameList()
-            is_first = True
-
-    async def _ingame(self):
+    def find_in_game(self):
         global game_start_time,is_first,game_time_stamp
-        in_game = pag.screenshot(r"C:\images\in_game.png", region=res.inGameRegion)
-        is_in_game = str(pytesseract.image_to_string(in_game, config=r'--oem 3 --psm 6'))
-        if '12,000' in is_in_game or len(is_in_game) > 4:
-            if is_first:
-                self.current_status.emit("in game...")
-                game_start_time = time.time()
-                game_time_stamp = datetime.now()
-                self.game_count.emit(incrementCounter())
-                is_first = False
-            dur = random.uniform(0.3,1)
-            keyboard_keys = [0x11, 0x1E, 0x1F, 0x20, 0x03, 0x04]
-            if random.randint(0,1) == 1:
-                KeyPress(keyboard_keys[random.randint(0,5)])
-            else:
-                pag.click()
-            await asyncio.sleep(dur)
+        while self.loop_stat:
+            if self.launch_state:
+                continue
+            in_game = pag.screenshot(r"C:\images\in_game.png", region=res.inGameRegion)
+            is_in_game = str(pytesseract.image_to_string(in_game, config=r'--oem 3 --psm 6'))
+            if '12,000' in is_in_game or len(is_in_game) > 4:
+                if is_first:
+                    self.current_status.emit("in game...")
+                    game_start_time = time.time()
+                    game_time_stamp = datetime.now()
+                    self.game_count.emit(incrementCounter())
+                    is_first = False
+                dur = random.uniform(0.3,1)
+                keyboard_keys = [0x11, 0x1E, 0x1F, 0x20, 0x03, 0x04]
+                if random.randint(0,1) == 1:
+                    KeyPress(keyboard_keys[random.randint(0,5)])
+                    pag.press('b')
+                    time.sleep(1)
+                    pag.click()
+                    time.sleep(0.31)
+                    pag.press('b')
+                else:
+                    pag.click()
+                time.sleep(dur)
+
+
+    def find_play_again(self):
+        global is_first
+        while self.loop_stat:
+            if self.launch_state:
+                continue
+            is_play_again = pag.screenshot(r"C:\images\play_again.png", region=res.playAgainRegion)
+            is_play_again = str(pytesseract.image_to_string(is_play_again, config= r'--oem 3 --psm 6'))
+            if 'PLAY AGAIN' in is_play_again:
+                self.current_status.emit("requeuing...")
+                self.click(res.playAgainClick[0],res.playAgainClick[1])
+                win32api.SetCursorPos((res.x // 2, res.y // 2))
+                appendGameList()
+                is_first = True
+            time.sleep(1)
+
+
+    def launch_game(self):
+        #NEEDS DEFAULT VALORANT C:\\ PATH AND STAY SIGNED IN CHECKED FOR THIS TO WORK
+        global game_counter
+        if game_counter <= self.GAME_THRESHOLD:
+            return
+        self.launch_state = True
+        self.GAME_THRESHOLD += self.GAME_THRESHOLD
+        GAME_NAME = "VALORANT.exe"
+        GAME_PROCESS_NAME = "VALORANT-Win64-Shipping.exe"
+        processes = [p.name() for p in psutil.process_iter()]
+        if GAME_NAME in processes:
+            self.current_status.emit("relaunching...")
+            subprocess.call(["taskkill","/F","/IM",GAME_PROCESS_NAME])
+            time.sleep(5)
+            subprocess.Popen("C:\\Riot Games\\Riot Client\\RiotClientServices.exe  --launch-product=valorant --launch-patchline=live")
+            time.sleep(15)
+        self.launch_state = False
 
     def click(self,x, y):
         win32api.SetCursorPos((x, y))
         pag.click(button='left', duration=0.3)  
              
-    async def task(self):
-        await asyncio.gather(
-            self._deathmatch(),
-            self._startgame(),
-            self._playagain(),
-            self._ingame())
-
     def run(self):
+        threads = [
+            threading.Thread(target=self.find_start_game),
+            threading.Thread(target=self.find_in_game),
+            threading.Thread(target=self.find_play_again),
+        ]
+        for thread in threads:
+            thread.start()
         while self.loop_stat:
-            asyncio.run(self.task())
+            self.find_home_play()
+            self.find_deathmatch()
+            self.launch_game()
             if keyboard.is_pressed('q'):
                 self.current_status.emit("STOPPED")
                 self._quit()

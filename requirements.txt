@@ -3,3 +3,6 @@ pywin32
 pytesseract
 pillow
 pyside2
+keyboard
+psutil
+opencv-python
